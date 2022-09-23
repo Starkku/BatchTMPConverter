@@ -2,6 +2,8 @@
 
 BatchTMPConverter is a command-line tool for replacing tile image data on Command & Conquer Tiberian Sun / Red Alert 2 terrain template (tmp) files. It allows for fast and quick conversion of PNG image files into already existing terrain templates.
 
+Download for latest build (automatically generated from latest commit in `master` branch) can be found [here](https://github.com/Starkku/BatchTMPConverter/releases/tag/latest).
+
 Accepted parameters:
 ```
 -h, --help                          Show help.
