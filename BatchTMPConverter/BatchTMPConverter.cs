@@ -118,6 +118,7 @@ namespace BatchTMPConverter
         {
             bool allowNoConvert = fixZData;
             bool skipConvert = false;
+            bool altered = false;
 
             if (!palette.Loaded)
             {
@@ -206,14 +207,19 @@ namespace BatchTMPConverter
                         continue;
                     }
 
+                    altered = true;
+
                     if (imageFilename != actualImageFilename)
                         File.Delete(actualImageFilename);
                 }
 
                 if (fixZData)
+                {
                     tmp.FixZData();
+                    altered = true;
+                }
 
-                if (tmp.Save(supressBackups) && !skipConvert)
+                if (altered && tmp.Save(supressBackups) && !skipConvert)
                     processedFilesLog?.UpdateOrAddFile(imageFilename);
             }
 
