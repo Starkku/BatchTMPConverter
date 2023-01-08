@@ -10,10 +10,12 @@ Accepted parameters:
 -i, --files=VALUE                   A comma-separated list of input file(s) and/or directory/directories.
 -p, --palette=VALUE                 Palette file to use for conversion.
 -o, --output-images                 Output template data as images instead of  converting images to templates.
+-u, --output-zdata                  Output template z-data as images instead of converting images to templates
 -e, --extensions-override=VALUE     Comma-separated list of file extensions (including the .) to use instead of built-in defaults.
 -r, --replace-radarcolor            Alter tile radar colors based on new image & palette data.
 -m, --radarcolor-multiplier=VALUE   Multiplier to radar color RGB values, if they are altered.
 -x, --extraimage-bg-override        Allow overwriting background color pixels on existing extra images.
+-z, --zdata-fix                     Adjusts z-data values on processed tiles so that any value higher than 31 on z-data is converted to 0. This is applied even if no image data is modified.
 -c, --accurate-color-matching       Enables slower but more accurate palette color matching.
 -d, --preprocess-commands=VALUE     List of commands to use to preprocess images before conversion. Comma-separated list of commands consisting of executable and arguments separated by semicolon.
 -b, --no-backups                    Disable backing up the edited files with same name using file extension .old.
