@@ -1,4 +1,13 @@
-﻿using System;
+﻿/*
+ * Copyright 2016-2023 by Starkku
+ * This file is part of BatchTMPConverter, which is free software. It is made
+ * available to you under the terms of the GNU General Public License
+ * as published by the Free Software Foundation, either version 3 of
+ * the License, or (at your option) any later version. For more
+ * information, see LICENSE.txt.
+ */
+
+using System;
 using System.Collections.Generic;
 using BatchTMPConverter.Logic;
 using System.Drawing;
@@ -18,13 +27,14 @@ namespace BatchTMPConverter
         private readonly bool replaceRadarColors = false;
         private readonly double radarColorMultiplier = 1.0;
         private readonly bool extraDataBGOverride = false;
+        private readonly bool fixZData = false;
         private readonly bool accurateColorMatching = false;
         private FileLog processedFilesLog = null;
         private readonly bool supressBackups = false;
         private List<Tuple<string, string>> preprocessCommands = new List<Tuple<string, string>>();
 
         public BatchTMPConverter(string filenames, string palette, string customExtensions, bool replaceRadarColors, double radarColorMultiplier, bool extraDataBGOverride,
-            bool accurateColorMatching, string preprocessCommands, string fileLogFilename, bool supressBackups)
+            bool fixZData, bool accurateColorMatching, string preprocessCommands, string fileLogFilename, bool supressBackups)
         {
             if (!string.IsNullOrEmpty(fileLogFilename))
                 processedFilesLog = new FileLog(fileLogFilename);
@@ -41,6 +51,7 @@ namespace BatchTMPConverter
             this.replaceRadarColors = replaceRadarColors;
             this.radarColorMultiplier = radarColorMultiplier;
             this.extraDataBGOverride = extraDataBGOverride;
+            this.fixZData = fixZData;
             this.accurateColorMatching = accurateColorMatching;
             this.supressBackups = supressBackups;
             ParsePreprocessCommands(preprocessCommands);
@@ -103,12 +114,20 @@ namespace BatchTMPConverter
             }
         }
 
-        public void ConvertImagesToTMP()
+        public void ProcessTiles()
         {
+            bool allowNoConvert = fixZData;
+            bool skipConvert = false;
+
             if (!palette.Loaded)
             {
-                Logger.Error("No palette file has been loaded - cannot convert image data to templates.");
-                return;
+                if (!allowNoConvert)
+                {
+                    Logger.Error("No palette file has been loaded - cannot convert image data to templates.");
+                    return;
+                }
+
+                skipConvert = true;
             }
 
             foreach (string filename in files)
@@ -122,15 +141,27 @@ namespace BatchTMPConverter
 
                 if (!File.Exists(imageFilename))
                 {
-                    Logger.Warn("Image '" + imageFilename + "' does not exist. Skip converting image data to template.");
-                    continue;
+                    if (!allowNoConvert)
+                    {
+                        Logger.Warn("Image '" + imageFilename + "' does not exist. Skip converting image data to template.");
+                        continue;
+                    }
+
+                    skipConvert = true;
                 }
                 else if (processedFilesLog != null && !processedFilesLog.HasFileBeenModified(imageFilename))
                 {
-                    Logger.Warn("Image '" + imageFilename + "' has not been modified. Skip converting image data to template.");
-                    continue;
+                    if (!allowNoConvert)
+                    {
+                        Logger.Warn("Image '" + imageFilename + "' has not been modified. Skip converting image data to template.");
+
+                        continue;
+                    }
+
+                    skipConvert = true;
                 }
-                else
+
+                if (!skipConvert)
                 {
                     string actualImageFilename = PreprocessImage(imageFilename);
                     Bitmap bitmap = new Bitmap(actualImageFilename);
@@ -175,13 +206,17 @@ namespace BatchTMPConverter
                         continue;
                     }
 
-                    if (tmp.Save(supressBackups))
-                        processedFilesLog?.UpdateOrAddFile(imageFilename);
-                    
                     if (imageFilename != actualImageFilename)
                         File.Delete(actualImageFilename);
                 }
+
+                if (fixZData)
+                    tmp.FixZData();
+
+                if (tmp.Save(supressBackups) && !skipConvert)
+                    processedFilesLog?.UpdateOrAddFile(imageFilename);
             }
+
             processedFilesLog?.Save();
         }
 
@@ -208,7 +243,7 @@ namespace BatchTMPConverter
             return filename;
         }
 
-        public void OutputTMPImageData()
+        public void OutputTMPImageData(bool outputZData = false)
         {
             if (!palette.Loaded)
             {
@@ -230,14 +265,22 @@ namespace BatchTMPConverter
                     continue;
 
                 Rectangle tmpRectangle = tmp.GetRectangle();
-                byte[] data = tmp.GetImageData(tmpRectangle);
+                byte[] data = tmp.GetImageData(tmpRectangle, false, outputZData);
 
-                string imagefilename = Path.ChangeExtension(tmp.FilenameInput, ".png");
+                string basePath = Path.GetDirectoryName(tmp.FilenameInput);
+                string baseFilename = Path.GetFileNameWithoutExtension(tmp.FilenameInput);
+                string suffix = outputZData ? "_ZData" : string.Empty;
+                string imagefilename = Path.Combine(basePath, baseFilename + suffix + ".png");
+
                 Bitmap bitmap = new Bitmap(tmpRectangle.Width - tmpRectangle.Left, tmpRectangle.Height - tmpRectangle.Top, PixelFormat.Format24bppRgb);
 
                 try
                 {
-                    SaveImageDataToBitmap(bitmap, data, palette);
+                    if (!outputZData)
+                        SaveImageDataToBitmap(bitmap, data, palette);
+                    else
+                        SaveZDataToBitmap(bitmap, data);
+
                     bitmap.Save(imagefilename);
                 }
                 catch (Exception e)
@@ -249,6 +292,7 @@ namespace BatchTMPConverter
                 processedFilesLog?.UpdateOrAddFile(filename);
                 Logger.Info(filename + " template data saved to image file " + imagefilename + ".");
             }
+
             processedFilesLog?.Save();
         }
 
@@ -316,6 +360,20 @@ namespace BatchTMPConverter
                 {
                     PaletteColor color = palette.GetColor(data[c++]);
                     bitmap.SetPixel(x, y, Color.FromArgb(color.Red, color.Green, color.Blue));
+                }
+            }
+        }
+
+        private void SaveZDataToBitmap(Bitmap bitmap, byte[] data)
+        {
+            int c = 0;
+
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    byte value = (byte)Math.Min(data[c++] << 3, 255);
+                    bitmap.SetPixel(x, y, Color.FromArgb(value, value, value));
                 }
             }
         }

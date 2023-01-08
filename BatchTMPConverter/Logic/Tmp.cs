@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright 2016-2022 by Starkku
+ * Copyright 2016-2023 by Starkku
  * This file is part of BatchTMPConverter, which is free software. It is made
  * available to you under the terms of the GNU General Public License
  * as published by the Free Software Foundation, either version 3 of
@@ -341,12 +341,11 @@ namespace BatchTMPConverter.Logic
             Logger.Info(FilenameInput + " tile data successfully replaced.");
         }
 
-        public byte[] GetImageData(Rectangle tmpRectangle, bool ignoreExtraData = false)
+        public byte[] GetImageData(Rectangle tmpRectangle, bool ignoreExtraData = false, bool useZData = false)
         {
             int HalfHeight = BlockHeight / 2;
             int gx = tmpRectangle.Width - tmpRectangle.Left;
             int gy = tmpRectangle.Height - tmpRectangle.Top;
-
             byte[] imageData = new byte[gx * gy];
 
             foreach (TmpTile tile in tiles)
@@ -364,7 +363,8 @@ namespace BatchTMPConverter.Logic
                 {
                     cx += 4;
                     x -= 2;
-                    CopyArray(tile.GetTileData(), tdc, imageData, p + x, cx);
+                    var data = useZData ? tile.GetZData() : tile.GetTileData();
+                    CopyArray(data, tdc, imageData, p + x, cx, false, useZData);
                     tdc += cx;
                     p += gx;
                 }
@@ -373,7 +373,8 @@ namespace BatchTMPConverter.Logic
                 {
                     cx -= 4;
                     x += 2;
-                    CopyArray(tile.GetTileData(), tdc, imageData, p + x, cx);
+                    var data = useZData ? tile.GetZData() : tile.GetTileData();
+                    CopyArray(data, tdc, imageData, p + x, cx, false, useZData);
                     tdc += cx;
                     p += gx;
                 }
@@ -391,7 +392,8 @@ namespace BatchTMPConverter.Logic
 
                         for (int i = 0; i < cx; i++)
                         {
-                            CopyArray(tile.GetExtraData(), edc, imageData, p2, 1, true);
+                            var data = useZData ? tile.GetExtraZData() : tile.GetExtraData();
+                            CopyArray(data, edc, imageData, p2, 1, true, useZData);
                             edc++;
                             p2++;
                         }
@@ -402,6 +404,27 @@ namespace BatchTMPConverter.Logic
             }
 
             return imageData;
+        }
+
+        public void FixZData()
+        {
+            for (int t = 0; t < tiles.Count; t++)
+            {
+                var tile = tiles[t];
+                var zData = tile.GetExtraZData();
+
+                if (zData != null)
+                {
+                    for (int i = 0; i < zData.Length; i++)
+                    {
+                        if (zData[i] > 31)
+                        {
+                            //Logger.Info($"{FilenameInput} tile #{t + 1} extra image z-data at index {i} changed from {zData[i]} to 0.");
+                            zData[i] = 0;
+                        }
+                    }
+                }
+            }
         }
 
         private void CopyArray(PaletteColor[] src, int srcOffset, byte[] dst, int dstOffset, int length, ref RadarColor radarColor,
@@ -430,11 +453,14 @@ namespace BatchTMPConverter.Logic
             }
         }
 
-        private void CopyArray(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length, bool isExtra = false)
+        private void CopyArray(byte[] src, int srcOffset, byte[] dst, int dstOffset, int length, bool isExtra = false, bool isZData = false)
         {
             for (int i = 0; i < length; i++)
             {
                 if (isExtra && src[srcOffset + i] == 0)
+                    continue;
+
+                if (isZData && (src[srcOffset + i] == 205 || src[srcOffset + i] == 0))
                     continue;
 
                 dst[dstOffset + i] = src[srcOffset + i];
